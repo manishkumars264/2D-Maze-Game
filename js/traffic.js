@@ -307,6 +307,23 @@
       }
     }
 
+    /* ---- courtesy: traffic reacts to a slower player directly ahead ----
+       Only as an emergency response (short time-to-closure), so traffic never
+       forms a convoy behind you; a car stuck behind you pulls out instead.
+       Without any reaction a hard-braking player gets rear-ended, which feels
+       unfair rather than challenging. */
+    const pGap = player.dist - car.dist;
+    if (pGap > 0 && pGap < 340 && Math.abs(player.x - car.x) < world.laneWidth * 0.62) {
+      const gap = pGap - car.hl - player.hl;
+      const rel = car.speed - player.speed;
+      const desired = T.FOLLOW_GAP * (0.7 + car.agility * 0.5);
+      if (rel > 20 && gap < Math.max(desired, rel * 1.2)) {
+        const t = U.clamp(gap / desired, 0, 1);
+        targetSpeed = Math.min(targetSpeed, U.lerp(player.speed * 0.95, car.cruise, t));
+        if (gap < desired * 0.6 && car.laneChangeCd <= 0) this._beginLaneChange(car, cars);
+      }
+    }
+
     /* ---- aggression: speed up when the player is right behind ---- */
     if (tr.aggressive && car.aggression > 0.5) {
       const behind = player.dist - car.dist;
