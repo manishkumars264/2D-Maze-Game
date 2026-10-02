@@ -479,7 +479,7 @@
     this._updateScore(dt, p);
 
     /* --- particles & effects --- */
-    this._updateEffects(dt, p);
+    this._updateEffects(p);
     this.particles.update(dt);
 
     /* --- camera --- */
@@ -517,7 +517,7 @@
     }
   };
 
-  Game.prototype._updateEffects = function (dt, p) {
+  Game.prototype._updateEffects = function (p) {
     // tyre smoke when sliding
     if (p.slip > 0.42 && p.speed > 60) {
       const amount = Math.random() < p.slip * 0.9 ? 1 : 0;
@@ -540,9 +540,8 @@
       this.particles.flame(p.x + p.hw * 0.42, p.dist - p.hl * 1.02, p.boostPower);
     }
 
-    // high speed shake
-    if (p.speedNorm() > 0.92) this.renderer.camera.addShake(0.35);
-    void dt;
+    // NOTE: no speed-based camera shake on purpose - the camera only reacts
+    // to real events (crashes, barrier scrapes, leaving the tarmac).
   };
 
   /* ------------------------------------------------------------ crash logic */

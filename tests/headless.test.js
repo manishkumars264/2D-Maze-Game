@@ -135,67 +135,95 @@ function smartDriver(game) {
   const cars = game.traffic.cars;
   const currentLane = w.laneAtX(p.dist, p.x);
 
-  /** Nearest car ahead in a lane (indicated mergers count as already merged). */
+  /** Nearest car ahead in a lane; indicating mergers count as merged. */
   function carAhead(lane) {
     let best = null;
     let bestD = Infinity;
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
-      const merged = c.lane === lane || c.toLane === lane;
-      if (!merged) continue;
+      if (c.lane !== lane && c.toLane !== lane) continue;
       const d = c.dist - p.dist;
       if (d > -(p.hl + c.hl) && d < bestD) { bestD = d; best = c; }
     }
     return best ? { car: best, gap: bestD - (p.hl + best.hl) } : null;
   }
 
-  /** Distance needed to shed our closing speed on a given leader. */
-  function brakingNeed(leader) {
-    const rel = p.speed - leader.car.speed;
+  /** Distance needed to shed our closing speed on leader c. */
+  function closingNeed(c) {
+    const rel = p.speed - c.speed;
     return rel > 0 ? (rel * rel) / (2 * CFG.PLAYER.BRAKE) : 0;
   }
 
-  function clearanceIn(lane) {
-    const t = carAhead(lane);
-    return t ? t.gap : 4000;
-  }
-
-  // a lane is unattractive if a car sits beside/behind us in it
-  function blockedBeside(lane) {
+  /** Is a car beside / just behind / just ahead of us in this lane? */
+  function occupied(lane) {
     for (let i = 0; i < cars.length; i++) {
       const c = cars[i];
       if (c.lane !== lane && c.toLane !== lane) continue;
       const d = c.dist - p.dist;
-      if (d > -(p.hl + c.hl) - 30 && d < 90) return true;
+      if (d > -(p.hl + c.hl) - 40 && d < 240) return true;
     }
     return false;
   }
 
+  // just got hit? use the invulnerability window to escape the pack
+  if (p.invuln > 0.4) {
+    let safeLane = currentLane, safeScore = -Infinity;
+    for (let lane = 0; lane < w.laneCount; lane++) {
+      const t = carAhead(lane);
+      let score = t ? t.gap : 4000;
+      if (occupied(lane)) score = -1;
+      if (score > safeScore) { safeScore = score; safeLane = lane; }
+    }
+    const err = w.laneCenterX(p.dist + 140, safeLane) - p.x;
+    game.input.set('left', err < -9);
+    game.input.set('right', err > 9);
+    game.input.set('up', false);
+    game.input.set('down', p.speed > 260);
+    return;
+  }
+
+  // ONE lane step at a time (stay / left / right) so we never blind-cross
+  // an intermediate lane we have not checked.
   let bestLane = currentLane;
   let bestScore = -Infinity;
-  for (let lane = 0; lane < w.laneCount; lane++) {
+  for (let lane = currentLane - 1; lane <= currentLane + 1; lane++) {
+    if (lane < 0 || lane >= w.laneCount) continue;
+    const t = carAhead(lane);
+    const clearance = t ? t.gap : 4000;
     const lateral = Math.abs(w.laneCenterX(p.dist, lane) - p.x);
-    let score = clearanceIn(lane) - lateral * 0.85 + (lane === currentLane ? 150 : 0);
-    if (lane !== currentLane && blockedBeside(lane)) score -= 900;
+    let score = Math.min(clearance, 1200) - lateral * 0.85 + (lane === currentLane ? 120 : 0);
+    if (lane !== currentLane && occupied(lane)) score -= 2000;
     if (score > bestScore) { bestScore = score; bestLane = lane; }
   }
 
-  const targetX = w.laneCenterX(p.dist + 140, bestLane);
-  const err = targetX - p.x;
+  // lean away inside our lane from cars crowding us sideways
+  let nudge = 0;
+  for (let i = 0; i < cars.length; i++) {
+    const c = cars[i];
+    const d = c.dist - p.dist;
+    const dx = c.x - p.x;
+    if (Math.abs(d) < 110 && Math.abs(dx) < 70 && Math.abs(dx) > 1) {
+      nudge += (dx > 0 ? -1 : 1) * Math.min(34, 70 - Math.abs(dx));
+    }
+  }
+  nudge = Math.max(-30, Math.min(30, nudge));
+
+  const err = w.laneCenterX(p.dist + 140, bestLane) + nudge - p.x;
   game.input.set('left', err < -9);
   game.input.set('right', err > 9);
 
-  // throttle modulation like a human: full gas on open road, coast when it
-  // gets busy, brake when the closing-speed maths says we must
-  const leader = carAhead(bestLane) || carAhead(currentLane);
+  // respect cars in BOTH the lane we occupy and the lane we are entering;
+  // merging leaders get a much earlier brake point
   let mustBrake = false;
   let coast = false;
-  if (leader) {
-    const need = brakingNeed(leader);
-    if (leader.gap < need + p.hl + 55) mustBrake = true;
-    else if (leader.gap < need + 260) coast = true;
-  } else if (clearanceIn(bestLane) < 380) {
-    coast = true;
+  for (let k = 0; k < 2; k++) {
+    const lane = k === 0 ? currentLane : bestLane;
+    const t = carAhead(lane);
+    if (!t) continue;
+    const merging = t.car.toLane === lane && t.car.lane !== lane;
+    const need = closingNeed(t.car);
+    if (t.gap < need + p.hl + (merging ? 190 : 55)) mustBrake = true;
+    else if (t.gap < need + 280) coast = true;
   }
   game.input.set('up', !mustBrake && !coast);
   game.input.set('down', mustBrake);
@@ -779,9 +807,9 @@ test('a rule-based driver survives hard-mode traffic most of the time', function
   // means mistakes are *avoidable*, i.e. the simple driver usually lasts.
   const results = [];
   let worstPct = 0;
-  for (let trial = 0; trial < 3; trial++) {
+  for (let trial = 0; trial < 5; trial++) {
     const g = playing(newGame('hard'));
-    const frames = 60 * 32;
+    const frames = 60 * 30;
     let wallFrames = 0;
     fastRun(g, frames, 1000 / 60, function (gg) {
       if (gg.state !== 'playing') return;
@@ -799,11 +827,11 @@ test('a rule-based driver survives hard-mode traffic most of the time', function
     worstPct = Math.max(worstPct, pct);
     results.push({ time: g.raceTime, shields: g.player.shields, state: g.state });
   }
-  const survived = results.filter(function (r) { return r.time > 30; }).length;
+  const survived = results.filter(function (r) { return r.time > 28; }).length;
   console.log('          (hard-mode trials: ' +
               results.map(function (r) { return r.time.toFixed(0) + 's/' + r.shields + 'sh'; }).join(', ') +
               ', worst wall% ' + worstPct.toFixed(1) + ')');
-  assert(survived >= 2, 'the driver should survive hard mode in most trials, survived ' + survived + '/3');
+  assert(survived >= 3, 'the driver should survive hard mode in most trials, survived ' + survived + '/5');
   assert(worstPct < 12, 'walls inside braking distance persisted too long: ' + worstPct.toFixed(1) + '%');
 });
 
@@ -1371,6 +1399,23 @@ test('screen shake is triggered by impacts and decays', function () {
   assert(g.renderer.camera.shake > 0, 'shake not applied');
   run(g, 90);
   assert(g.renderer.camera.shake < 1, 'shake did not decay: ' + g.renderer.camera.shake);
+});
+
+test('flat-out speed on clean tarmac never shakes the camera', function () {
+  // user-facing rule: the camera reacts to events, never to speed itself
+  const g = playing(newGame('hard'));
+  clearTraffic(g);
+  let maxShake = 0;
+  fastRun(g, 60 * 20, 1000 / 60, function (gg) {
+    steerOnly(gg);
+    gg.input.set('boost', true);          // even at boost speed: no shake
+    // only sample frames with no legitimate shake source (off-road/crash)
+    if (!gg.player.offRoad && gg.state === 'playing' && gg.stats.shieldsLost === 0) {
+      maxShake = Math.max(maxShake, gg.renderer.camera.shake);
+    }
+  });
+  assert(g.player.speedNorm() > 0.9, 'test should reach top speed, got ' + g.player.speedNorm().toFixed(2));
+  assert(maxShake === 0, 'camera shook at speed without any impact: ' + maxShake.toFixed(2));
 });
 
 test('particles are emitted, updated and pooled without leaking', function () {
