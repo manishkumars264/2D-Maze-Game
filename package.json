@@ -1,0 +1,21 @@
+{
+  "name": "coastline-overdrive",
+  "version": "1.0.0",
+  "description": "Original 2D browser arcade racing game - HTML5 Canvas, no assets, no build step.",
+  "private": true,
+  "scripts": {
+    "start": "node server.js 8080",
+    "serve": "node server.js 8080",
+    "test": "node tests/headless.test.js",
+    "shots": "node tests/screenshots.js"
+  },
+  "keywords": [
+    "game",
+    "canvas",
+    "arcade",
+    "racing",
+    "html5",
+    "2d"
+  ],
+  "license": "MIT"
+}

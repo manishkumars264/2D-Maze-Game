@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Coastline Overdrive - an original 2D browser arcade racing game built with HTML5 Canvas." />
+<meta name="theme-color" content="#0b1220" />
+<title>Coastline Overdrive &mdash; 2D Arcade Racer</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- Decorative animated backdrop behind the letterboxed game stage -->
+<div class="backdrop" aria-hidden="true">
+  <div class="backdrop__sun"></div>
+  <div class="backdrop__grid"></div>
+  <div class="backdrop__haze"></div>
+</div>
+
+<div id="app">
+  <main id="stage" class="stage" aria-label="Coastline Overdrive game">
+
+    <!-- ============ GAME CANVAS ============ -->
+    <canvas id="game" width="960" height="640" aria-label="Racing game view"></canvas>
+
+    <!-- ============ IN-GAME HUD ============ -->
+    <div id="hud" class="hud" hidden>
+      <div class="hud__top">
+        <div class="hud__cluster hud__cluster--left">
+          <div class="stat stat--score">
+            <span class="stat__label">Score</span>
+            <span class="stat__value" id="hudScore">0</span>
+          </div>
+          <div class="stat">
+            <span class="stat__label">Distance</span>
+            <span class="stat__value stat__value--small" id="hudDistance">0 m</span>
+          </div>
+          <div class="stat">
+            <span class="stat__label">Best</span>
+            <span class="stat__value stat__value--small" id="hudBest">0</span>
+          </div>
+        </div>
+
+        <div class="hud__cluster hud__cluster--center">
+          <div class="chip" id="hudDifficulty">MEDIUM</div>
+          <div class="shields" id="hudShields" title="Remaining shields"></div>
+          <div class="combo" id="hudCombo" hidden>
+            <span class="combo__mult" id="hudComboMult">x2</span>
+            <span class="combo__label">NEAR MISS</span>
+            <div class="combo__bar"><i id="hudComboBar"></i></div>
+          </div>
+        </div>
+
+        <div class="hud__cluster hud__cluster--right">
+          <button class="iconbtn" id="btnMute" type="button" title="Mute / unmute (M)" aria-label="Mute or unmute sound">
+            <svg viewBox="0 0 24 24" class="ico ico--sound" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="wave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/><path class="cross" d="M17 9.5l5 5m0-5l-5 5"/></svg>
+          </button>
+          <button class="iconbtn" id="btnPause" type="button" title="Pause / resume (P or Esc)" aria-label="Pause or resume">
+            <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="hud__bottom">
+        <div class="boost" id="hudBoostWrap" title="Boost charge (hold Shift)">
+          <span class="boost__label">BOOST</span>
+          <div class="boost__bar"><i id="hudBoostBar"></i></div>
+          <span class="boost__hint">SHIFT</span>
+        </div>
+
+        <div class="speedo" id="speedoWrap">
+          <canvas id="speedo" width="176" height="176" aria-hidden="true"></canvas>
+          <div class="speedo__read">
+            <span class="speedo__value" id="hudSpeed">0</span>
+            <span class="speedo__unit">km/h</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="toasts" id="toasts" aria-live="polite"></div>
+    </div>
+
+    <!-- ============ TOUCH CONTROLS (tablets / touch devices) ============ -->
+    <div id="touch" class="touch" hidden>
+      <div class="touch__pad touch__pad--left">
+        <button class="tbtn" data-key="left" aria-label="Steer left">&#9664;</button>
+        <button class="tbtn" data-key="right" aria-label="Steer right">&#9654;</button>
+      </div>
+      <div class="touch__pad touch__pad--right">
+        <button class="tbtn tbtn--brake" data-key="down" aria-label="Brake">BRK</button>
+        <button class="tbtn tbtn--gas" data-key="up" aria-label="Accelerate">GAS</button>
+        <button class="tbtn tbtn--boost" data-key="boost" aria-label="Boost">NOS</button>
+      </div>
+    </div>
+
+    <!-- ============ MAIN MENU ============ -->
+    <section id="menu" class="overlay overlay--menu" role="dialog" aria-modal="true" aria-labelledby="menuTitle">
+      <div class="menu__inner">
+        <p class="kicker">Endless highway &middot; Arcade racer</p>
+        <h1 class="title" id="menuTitle">
+          <span class="title__main">COASTLINE</span>
+          <span class="title__sub">OVERDRIVE</span>
+        </h1>
+
+        <div class="menu__grid">
+          <div class="panel panel--diff">
+            <h2 class="panel__title">Select difficulty</h2>
+            <div class="diffs" id="difficultyList" role="radiogroup" aria-label="Difficulty"></div>
+            <p class="panel__note" id="diffNote">Traffic, speeds, gaps and shields all change with difficulty.</p>
+          </div>
+
+          <div class="panel panel--help">
+            <h2 class="panel__title">Controls</h2>
+            <ul class="keys">
+              <li><span class="keyset"><kbd>&#8593;</kbd><kbd>W</kbd></span> Accelerate</li>
+              <li><span class="keyset"><kbd>&#8595;</kbd><kbd>S</kbd></span> Brake / reverse</li>
+              <li><span class="keyset"><kbd>&#8592;</kbd><kbd>A</kbd></span> Steer left</li>
+              <li><span class="keyset"><kbd>&#8594;</kbd><kbd>D</kbd></span> Steer right</li>
+              <li><span class="keyset"><kbd>Shift</kbd></span> Boost (uses NOS bar)</li>
+              <li><span class="keyset"><kbd>P</kbd><kbd>Esc</kbd></span> Pause / resume</li>
+              <li><span class="keyset"><kbd>M</kbd></span> Mute / unmute</li>
+              <li><span class="keyset"><kbd>R</kbd></span> Restart after a crash</li>
+            </ul>
+            <div class="tips">
+              <h3 class="panel__title panel__title--sm">How to score</h3>
+              <p>Distance is the base score. Thread past traffic for <b>near-miss bonuses</b> that build a combo and refill your boost. Going off-road onto the grass slows you down hard.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="menu__actions">
+          <button class="btn btn--primary btn--xl" id="btnPlay" type="button">
+            <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
+            PLAY
+          </button>
+          <button class="btn btn--ghost" id="btnSound" type="button">
+            <span class="dot" id="soundDot"></span> Sound: <b id="soundState">On</b>
+          </button>
+        </div>
+
+        <div class="menu__meta">
+          <span>Best score <b id="menuBest">0</b></span>
+          <span class="sep"></span>
+          <span>Longest run <b id="menuBestDist">0 m</b></span>
+          <span class="sep"></span>
+          <span class="fine">HTML5 Canvas &middot; no assets, all procedural</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COUNTDOWN ============ -->
+    <section id="countdown" class="overlay overlay--count" hidden>
+      <div class="count" id="countText">3</div>
+      <div class="count-sub" id="countSub">Get ready</div>
+    </section>
+
+    <!-- ============ PAUSE ============ -->
+    <section id="pause" class="overlay overlay--pause" role="dialog" aria-modal="true" aria-labelledby="pauseTitle" hidden>
+      <div class="card">
+        <h2 class="card__title" id="pauseTitle">PAUSED</h2>
+        <p class="card__text">Engine idling. Take a breath.</p>
+        <div class="card__stats" id="pauseStats"></div>
+        <div class="card__actions">
+          <button class="btn btn--primary" id="btnResume" type="button">Resume</button>
+          <button class="btn btn--ghost" id="btnRestartPause" type="button">Restart</button>
+          <button class="btn btn--ghost" id="btnQuit" type="button">Main menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ GAME OVER ============ -->
+    <section id="gameover" class="overlay overlay--over" role="dialog" aria-modal="true" aria-labelledby="overTitle" hidden>
+      <div class="card card--over">
+        <p class="kicker kicker--red" id="overKicker">Totalled</p>
+        <h2 class="card__title card__title--red" id="overTitle">GAME OVER</h2>
+        <div class="result">
+          <div class="result__main">
+            <span class="result__label">Final score</span>
+            <span class="result__value" id="overScore">0</span>
+            <span class="result__best" id="overBest"></span>
+          </div>
+          <ul class="result__list" id="overStats"></ul>
+        </div>
+        <div class="card__actions">
+          <button class="btn btn--primary" id="btnRestart" type="button">
+            <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+            Restart <kbd>R</kbd>
+          </button>
+          <button class="btn btn--ghost" id="btnMenu" type="button">Main menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LOADING / NO-CANVAS FALLBACK ============ -->
+    <section id="fatal" class="overlay" hidden>
+      <div class="card">
+        <h2 class="card__title">Canvas unavailable</h2>
+        <p class="card__text">This game needs an HTML5 Canvas capable browser. Please update your browser and reload.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Load order matters: every file registers itself on the global Racer namespace. -->
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/input.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/particles.js"></script>
+<script src="js/vehicles.js"></script>
+<script src="js/world.js"></script>
+<script src="js/player.js"></script>
+<script src="js/traffic.js"></script>
+<script src="js/collision.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
